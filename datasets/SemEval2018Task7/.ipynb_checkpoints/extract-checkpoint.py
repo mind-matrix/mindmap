@@ -19,8 +19,3 @@ def extract_sents(xml):
         # Combine the lines in the list into a string
         content = "".join(content)
         doc = bs(content, "lxml")
-        texts = doc.find_all("text")
-        for text in texts:
-            title = text.find("title").text
-            abstract = text.find("abstract")
-            
