@@ -2,12 +2,16 @@ import pandas as pd
 import re
 from bs4 import BeautifulSoup as bs, Tag, NavigableString
 from nltk.tokenize import RegexpTokenizer
+import json
+from bidict import bidict, inverted
 
 tokenizer = RegexpTokenizer(r'\w+')
 
 def extract(f):
     rows = []
-    with open(f, "r") as fd:
+    stats = { 'rels': dict(), 'count': 0, 'mapping': bidict() }
+    stats_k = 1
+    with open(f, "r", encoding="utf8") as fd:
         for i, line in enumerate(fd):
             if (i+1) % 3 == 0:
                 continue
@@ -16,11 +20,18 @@ def extract(f):
                 soup = bs(line, "html.parser")
                 text = []
                 tag = []
+                stats['count'] += 1
                 for segment in soup.contents:
                     if isinstance(segment, Tag):
                         parts = tokenizer.tokenize(segment.text)
                         if segment.has_attr("relation"):
-                            tag += [ "B" ] + [ "I" for i in range(len(parts)-2) ] + [ "E" ]
+                            if segment["relation"] in stats['rels']:
+                                stats['rels'][segment["relation"]] += 1
+                            else:
+                                stats['rels'][segment["relation"]] = 1
+                                stats['mapping'][segment["relation"]] = stats_k
+                            tag += [ f'B-{stats_k}' ] + [ f'I-{stats_k}' for i in range(len(parts)-1) ]
+                            stats_k += 1
                         else:
                             tag += [ "O" for i in range(len(parts)) ]
                     else:
@@ -28,11 +39,26 @@ def extract(f):
                         tag += [ "O" for i in range(len(parts)) ]
                     text += parts
                 rows.append({ 'text': text, 'tag': tag })
-        return pd.DataFrame(rows)
+        return pd.DataFrame(rows), stats
 
+def save_stats(stats, figname, mappings):
+    import matplotlib.pyplot as plt
+    plt.rcParams.update({'figure.autolayout': True})
+
+    fig, axes = plt.subplots(figsize=(7,5), dpi=100)
+    plt.bar(stats['rels'].keys(), height=stats['rels'].values())
+    plt.xticks(rotation=90)
+    fig.savefig(figname)
+    with open(mappings+".json", "w") as fd:
+        json.dump(dict(stats['mapping']), fd)
+    with open(mappings+".inv.json", "w") as fd:
+        json.dump(dict(inverted(stats['mapping'])), fd)
+    
 def test():
-    df = extract("raw/wikipedia.test")
-    print(df.head())
+    df_train, stats_train = extract("raw/wikipedia.train")
+    df_test, stats_test = extract("raw/wikipedia.test")
+    save_stats(stats_train, figname="stats/train.rels.png", mappings="stats/train.map")
+    save_stats(stats_test, figname="stats/test.rels.png", mappings="stats/test.map")
 
 if __name__ == "__main__":
     test()
