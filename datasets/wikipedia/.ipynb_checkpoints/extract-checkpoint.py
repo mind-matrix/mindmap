@@ -4,8 +4,13 @@ from bs4 import BeautifulSoup as bs, Tag, NavigableString
 from nltk.tokenize import RegexpTokenizer
 import json
 from bidict import bidict, inverted
+from urllib.request import urlopen
+from lxml.html import parse
 
 tokenizer = RegexpTokenizer(r'\w+')
+
+def get_title(url):
+    return " ".join(url[url.rfind("/")+1 : len(url)].rstrip().split("_"))
 
 def extract(f):
     rows = []
@@ -13,9 +18,13 @@ def extract(f):
     stats_k = 1
     with open(f, "r", encoding="utf8") as fd:
         for i, line in enumerate(fd):
-            if (i+1) % 3 == 0:
-                continue
-            elif (i+1) % 2 == 0:
+            if i % 3 == 0:
+                try:
+                    url = line.split("url=")[1].strip()
+                    subj = get_title(url)
+                except:
+                    print(i)
+            elif i % 3 == 1:
                 # statement
                 soup = bs(line, "html.parser")
                 text = []
@@ -38,7 +47,9 @@ def extract(f):
                         parts = tokenizer.tokenize( str(segment) )
                         tag += [ "O" for i in range(len(parts)) ]
                     text += parts
-                rows.append({ 'text': text, 'tag': tag })
+                rows.append({ 'subject': subj, 'text': text, 'tag': tag })
+            else:
+                continue
         return pd.DataFrame(rows), stats
 
 def save_stats(stats, figname, mappings):
@@ -53,7 +64,7 @@ def save_stats(stats, figname, mappings):
         json.dump(dict(stats['mapping']), fd)
     with open(mappings+".inv.json", "w") as fd:
         json.dump(dict(inverted(stats['mapping'])), fd)
-    
+
 def test():
     df_train, stats_train = extract("raw/wikipedia.train")
     df_test, stats_test = extract("raw/wikipedia.test")
